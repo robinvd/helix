@@ -222,7 +222,7 @@ pub fn default() -> Keymaps {
         key!('/') => commands::search,
         // ? for search_reverse
         key!('n') => commands::search_next,
-        key!('N') => commands::extend_search_next,
+        key!('N') => commands::search_prev,
         // N for search_prev
         key!('*') => commands::search_selection,
 
@@ -337,6 +337,10 @@ pub fn default() -> Keymaps {
                 code: KeyCode::End,
                 modifiers: KeyModifiers::NONE
             } => commands::extend_line_end,
+
+            key!('n') => commands::extend_search_next,
+            key!('N') => commands::extend_search_prev,
+
             KeyEvent {
                 code: KeyCode::Esc,
                 modifiers: KeyModifiers::NONE

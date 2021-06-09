@@ -701,27 +701,90 @@ pub fn split_selection_on_newline(cx: &mut Context) {
     doc.set_selection(view.id, selection);
 }
 
-// search: searches for the first occurence in file, provides a prompt
-// search_next: reuses the last search regex and searches for the next match. The next match becomes the main selection.
 // -> we always search from after the cursor.head
 // TODO: be able to use selection as search query (*/alt *)
-// I'd probably collect all the matches right now and store the current index. The cache needs
-// wiping if input happens.
 
-fn _search(doc: &mut Document, view: &mut View, contents: &str, regex: &Regex, extend: bool) {
-    let text = doc.text();
+use helix_core::search::Searcher;
+
+pub fn search(cx: &mut Context) {
+    let (view, doc) = cx.current();
+
+    // TODO: could probably share with select_on_matches?
+
+    let view_id = view.id;
+    let snapshot = doc.selection(view_id).clone();
+
+    let prompt = Prompt::new(
+        "search:".to_string(),
+        |input: &str| Vec::new(), // this is fine because Vec::new() doesn't allocate
+        move |editor: &mut Editor, input: &str, event: PromptEvent| {
+            match event {
+                PromptEvent::Abort => {
+                    let (view, doc) = editor.current();
+                    doc.set_selection(view.id, snapshot.clone());
+                }
+                PromptEvent::Validate => {
+                    // TODO: push_jump to store selection just before jump
+                }
+                PromptEvent::Update => {
+                    // skip empty input, TODO: trigger default
+                    if input.is_empty() {
+                        return;
+                    }
+
+                    match Searcher::new(input) {
+                        Ok(searcher) => {
+                            let (view, doc) = editor.current();
+                            // revert state to what it was before the last update
+                            // TODO: also revert text
+                            doc.set_selection(view.id, snapshot.clone());
+
+                            editor.search = Some(searcher);
+                            _search(editor, Direction::Forward, false);
+
+                            // TODO: only store on enter (accept), not update
+                            register::set('\\', vec![input.to_string()]);
+                        }
+                        Err(_err) => (), // TODO: mark command line as error
+                    }
+                }
+            }
+        },
+    );
+
+    cx.push_layer(Box::new(prompt));
+}
+
+pub fn _search(editor: &mut Editor, direction: Direction, extend: bool) {
+    let (view, doc) = editor.current();
+    let text = doc.text().clone(); // need to clone or we run into borrowing issues, but it's a cheap clone
+    let cursor = doc.selection(view.id).cursor();
+    let start = text.char_to_byte(cursor);
+
+    let mat = if let Some(searcher) = &editor.search {
+        // use find_at to find the next match after the cursor, loop around the end
+        // Careful, `Regex` uses `bytes` as offsets, not character indices!
+        match direction {
+            Direction::Backward => searcher
+                .search_prev(text.slice(..), start)
+                .or_else(|| searcher.search_prev(text.slice(..), text.len_bytes())),
+            Direction::Forward => searcher
+                .search_next(text.slice(..), start)
+                .or_else(|| searcher.search_next(text.slice(..), 0)),
+        }
+    } else {
+        None
+    };
+
+    // refetch to avoid borrowing problems
+    let (view, doc) = editor.current();
+    let text = doc.text().slice(..);
     let selection = doc.selection(view.id);
-    let start = text.char_to_byte(selection.cursor());
 
-    // use find_at to find the next match after the cursor, loop around the end
-    // Careful, `Regex` uses `bytes` as offsets, not character indices!
-    let mat = regex
-        .find_at(contents, start)
-        .or_else(|| regex.find(contents));
     // TODO: message on wraparound
     if let Some(mat) = mat {
-        let start = text.byte_to_char(mat.start());
-        let end = text.byte_to_char(mat.end());
+        let start = text.byte_to_char(mat.start);
+        let end = text.byte_to_char(mat.end);
 
         if end == 0 {
             // skip empty matches that don't make sense
@@ -740,48 +803,22 @@ fn _search(doc: &mut Document, view: &mut View, contents: &str, regex: &Regex, e
         doc.set_selection(view.id, selection);
         align_view(doc, view, Align::Center);
     };
-}
-
-// TODO: use one function for search vs extend
-pub fn search(cx: &mut Context) {
-    let (view, doc) = cx.current();
-
-    // TODO: could probably share with select_on_matches?
-
-    // HAXX: sadly we can't avoid allocating a single string for the whole buffer since we can't
-    // feed chunks into the regex yet
-    let contents = doc.text().slice(..).to_string();
-
-    let view_id = view.id;
-    let prompt = ui::regex_prompt(cx, "search:".to_string(), move |view, doc, regex| {
-        let text = doc.text();
-        let start = doc.selection(view.id).cursor();
-        _search(doc, view, &contents, &regex, false);
-
-        // TODO: only store on enter (accept), not update
-        register::set('\\', vec![regex.as_str().to_string()]);
-    });
-
-    cx.push_layer(Box::new(prompt));
-}
-// can't search next for ""compose"" for some reason
-
-pub fn _search_next(cx: &mut Context, extend: bool) {
-    if let Some(query) = register::get('\\') {
-        let query = query.first().unwrap();
-        let (view, doc) = cx.current();
-        let contents = doc.text().slice(..).to_string();
-        let regex = Regex::new(query).unwrap();
-        _search(doc, view, &contents, &regex, extend);
-    }
+    view.ensure_cursor_in_view(doc);
 }
 
 pub fn search_next(cx: &mut Context) {
-    _search_next(cx, false);
+    _search(cx.editor, Direction::Forward, false);
 }
 
 pub fn extend_search_next(cx: &mut Context) {
-    _search_next(cx, true);
+    _search(cx.editor, Direction::Forward, true);
+}
+pub fn search_prev(cx: &mut Context) {
+    _search(cx.editor, Direction::Backward, false);
+}
+
+pub fn extend_search_prev(cx: &mut Context) {
+    _search(cx.editor, Direction::Backward, true);
 }
 
 pub fn search_selection(cx: &mut Context) {

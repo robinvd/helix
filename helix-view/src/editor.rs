@@ -8,6 +8,7 @@ use slotmap::SlotMap;
 use anyhow::Error;
 
 pub use helix_core::diagnostic::Severity;
+use helix_core::search::Searcher;
 
 pub struct Editor {
     pub tree: Tree,
@@ -16,6 +17,7 @@ pub struct Editor {
     pub register: RegisterSelection,
     pub theme: Theme,
     pub language_servers: helix_lsp::Registry,
+    pub search: Option<Searcher>,
 
     pub status_msg: Option<(String, Severity)>,
 }
@@ -61,6 +63,7 @@ impl Editor {
             register: RegisterSelection::default(),
             theme,
             language_servers,
+            search: None,
             status_msg: None,
         }
     }
