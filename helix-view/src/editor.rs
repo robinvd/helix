@@ -1,5 +1,6 @@
 use crate::{
     annotations::diagnostics::{DiagnosticFilter, InlineDiagnosticsConfig},
+    chat::chat_state::ChatState,
     clipboard::ClipboardProvider,
     document::{
         DocumentOpenError, DocumentSavedEventFuture, DocumentSavedEventResult, Mode, SavePoint,
@@ -1123,6 +1124,7 @@ pub struct Editor {
 
     pub mouse_down_range: Option<Range>,
     pub cursor_cache: CursorCache,
+    pub chat_state: ChatState,
 }
 
 pub type Motion = Box<dyn Fn(&mut Editor)>;
@@ -1245,6 +1247,7 @@ impl Editor {
             handlers,
             mouse_down_range: None,
             cursor_cache: CursorCache::default(),
+            chat_state: ChatState::default(),
         }
     }
 
@@ -2244,6 +2247,14 @@ impl Editor {
 
     pub fn get_last_cwd(&mut self) -> Option<&Path> {
         self.last_cwd.as_deref()
+    }
+
+    pub fn chat_state_mut(&mut self) -> &mut ChatState {
+        &mut self.chat_state
+    }
+
+    pub fn chat_state(&self) -> &ChatState {
+        &self.chat_state
     }
 }
 

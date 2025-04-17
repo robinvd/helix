@@ -18,6 +18,7 @@ pub mod register;
 pub mod theme;
 pub mod tree;
 pub mod view;
+pub mod chat;
 
 use std::num::NonZeroUsize;
 

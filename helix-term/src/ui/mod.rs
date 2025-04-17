@@ -1,3 +1,4 @@
+pub mod chat;
 mod completion;
 mod document;
 pub(crate) mod editor;
